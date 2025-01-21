@@ -364,82 +364,6 @@
                 width: auto;
             }
         }
-        .sidebar {
-            position: sticky;
-            top: 20px;
-        }
-        
-        .circle-filter {
-            margin-bottom: 20px;
-        }
-        
-        .circle-type {
-            margin-bottom: 15px;
-        }
-        
-        .circle-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        
-        .circle-item {
-            padding: 8px 12px;
-            border-radius: 8px;
-            margin-bottom: 5px;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            text-decoration: none;
-            color: #495057;
-        }
-        
-        .circle-item:hover {
-            background-color: #f8f9fa;
-        }
-        
-        .circle-item.active {
-            background-color: #e9ecef;
-            font-weight: 500;
-        }
-        
-        .circle-item .badge {
-            font-size: 0.75em;
-            padding: 0.25em 0.6em;
-        }
-        
-        .post-visibility {
-            font-size: 0.85em;
-            color: #6c757d;
-            margin-bottom: 12px;
-            display: inline-flex;
-            align-items: center;
-            padding: 4px 12px;
-            background-color: #f8f9fa;
-            border-radius: 20px;
-        }
-        
-        .post-visibility i {
-            margin-right: 6px;
-            font-size: 1.1em;
-        }
-        
-        .post-visibility.hometown {
-            color: #0d6efd;
-            background-color: #f1f5ff;
-        }
-        
-        .post-visibility.current {
-            color: #198754;
-            background-color: #f1fff8;
-        }
-        
-        .post-visibility.public {
-            color: #6c757d;
-            background-color: #f8f9fa;
-        }
     </style>
 </head>
 <body class="bg-light">
@@ -470,205 +394,237 @@
     </nav>
     <div class="container py-4">
         <div class="row">
-            <!-- 左侧边栏：圈子筛选 -->
-            {% if current_user.is_authenticated %}
-            <div class="col-md-3">
-                <div class="sidebar">
-                    <div class="card circle-filter">
-                        <div class="card-body">
-                            <h5 class="card-title mb-3">
-                                <i class="bi bi-funnel"></i> 内容筛选
-                            </h5>
-                            
-                            <!-- 全部内容 -->
-                            <a href="{{ url_for('index') }}" class="circle-item {% if not request.args.get('circle') %}active{% endif %}">
-                                <span><i class="bi bi-globe2"></i> 全部内容</span>
-                            </a>
-                            
-                            <!-- 故乡圈 -->
-                            {% if current_user.is_profile_completed %}
-                            <div class="circle-type mt-3">
-                                <h6 class="text-muted mb-2">
-                                    <i class="bi bi-house-heart"></i> 故乡圈
-                                </h6>
-                                <div class="circle-list">
-                                    {% for circle in current_user.circles %}
-                                    {% if circle.circle_type == 'hometown' %}
-                                    <a href="{{ url_for('index', circle=circle.id) }}" 
-                                       class="circle-item {% if request.args.get('circle')|int == circle.id %}active{% endif %}">
-                                        <span>{{ circle.name }}</span>
-                                        <span class="badge bg-secondary">{{ circle.users|length }}</span>
-                                    </a>
-                                    {% endif %}
-                                    {% endfor %}
-                                </div>
-                            </div>
-                            
-                            <!-- 同城圈 -->
-                            <div class="circle-type">
-                                <h6 class="text-muted mb-2">
-                                    <i class="bi bi-building"></i> 同城圈
-                                </h6>
-                                <div class="circle-list">
-                                    {% for circle in current_user.circles %}
-                                    {% if circle.circle_type == 'current' %}
-                                    <a href="{{ url_for('index', circle=circle.id) }}" 
-                                       class="circle-item {% if request.args.get('circle')|int == circle.id %}active{% endif %}">
-                                        <span>{{ circle.name }}</span>
-                                        <span class="badge bg-secondary">{{ circle.users|length }}</span>
-                                    </a>
-                                    {% endif %}
-                                    {% endfor %}
-                                </div>
-                            </div>
-                            {% else %}
-                            <div class="alert alert-warning" role="alert">
-                                <i class="bi bi-exclamation-triangle me-2"></i>
-                                完善个人信息后可查看圈子内容
-                                <a href="{{ url_for('profile') }}" class="alert-link d-block mt-2">去完善</a>
-                            </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-            
-            <!-- 右侧主内容区 -->
-            <div class="{% if current_user.is_authenticated %}col-md-9{% else %}col-md-12{% endif %}">
-                <!-- 发帖表单 -->
+            <div class="col-12">
                 {% if current_user.is_authenticated %}
-                <div class="card mb-4">
-                    <div class="card-body">
-                        <form method="POST" action="{{ url_for('create_post') }}" enctype="multipart/form-data">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <div class="mb-3">
-                                <textarea class="form-control" name="content" rows="3" placeholder="分享你的想法..." required></textarea>
+                <div class="main-content-container">
+                    <!-- 主内容区 -->
+                    <div class="main-content">
+                        <!-- 发布表单 -->
+                        <div class="card post-form-card">
+                            <div class="card-body">
+                                <form method="POST" enctype="multipart/form-data">
+                                    {{ form.csrf_token }}
+                                    <textarea class="form-control" name="content" rows="3" placeholder="写点什么...（可选）"></textarea>
+                                    
+                                    <!-- 图片预览区域 -->
+                                    <div id="image-preview" style="display: none;"></div>
+                                    
+                                    <div class="d-flex align-items-center mt-3">
+                                        <label class="btn btn-outline-primary btn-sm me-2">
+                                            <i class="bi bi-image"></i>
+                                            <input type="file" class="d-none" name="image" accept="image/*" multiple onchange="handleImagePreview(this)">
+                                        </label>
+                                        <div class="upload-status text-muted" style="font-size: 0.875em;"></div>
+                                        <div class="flex-grow-1"></div>
+                                        <button type="submit" class="btn btn-primary btn-sm">
+                                            <i class="bi bi-send-fill"></i> 发布
+                                        </button>
+                                    </div>
+                                </form>
                             </div>
-                            <div class="mb-3">
-                                <label for="visibility" class="form-label">可见范围</label>
-                                <select class="form-select" id="visibility" name="visibility" required>
-                                    <option value="public">公开</option>
-                                    {% if current_user.is_profile_completed %}
-                                        {% for circle in current_user.circles %}
-                                            <option value="circle_{{ circle.id }}">{{ circle.name }}</option>
-                                        {% endfor %}
-                                    {% endif %}
-                                </select>
-                            </div>
-                            <div class="mb-3">
-                                <label for="image" class="form-label">添加图片（可选）</label>
-                                <input type="file" class="form-control" id="image" name="image" accept="image/*">
-                            </div>
-                            <button type="submit" class="btn btn-primary">发布</button>
-                        </form>
-                    </div>
-                </div>
-                {% endif %}
+                        </div>
 
-                <!-- 帖子列表 -->
-                {% for post in posts.items %}
-                <div class="card post-card" id="post-{{ post.id }}">
-                    <div class="card-body">
-                        <!-- 帖子可见性标签 -->
-                        <div class="d-flex align-items-center mb-3">
-                            {% if post.visibility == 'public' %}
-                            <div class="post-visibility public">
-                                <i class="bi bi-globe2"></i>
-                                <span>公开</span>
-                            </div>
-                            {% else %}
-                                {% set circle_id = post.visibility.split('_')[1]|int %}
-                                {% for circle in current_user.circles %}
-                                    {% if circle.id == circle_id %}
-                                    <div class="post-visibility {{ circle.circle_type }}">
-                                        {% if circle.circle_type == 'hometown' %}
-                                            <i class="bi bi-house-heart-fill"></i>
-                                            <span>仅{{ circle.name }}可见</span>
-                                        {% else %}
-                                            <i class="bi bi-building-fill"></i>
-                                            <span>仅{{ circle.name }}可见</span>
+                        <!-- 微博列表 -->
+                        {% for post, user in posts %}
+                        <div class="card post-card" data-post-id="{{ post.id }}" id="post-{{ post.id }}">
+                            <div class="card-body position-relative">
+                                <!-- 添加发布者信息 -->
+                                <div class="d-flex align-items-center mb-2">
+                                    <a href="{{ url_for('user_profile', user_id=user.id) }}" class="text-decoration-none d-flex align-items-center">
+                                        <img src="{{ url_for('static', filename=user.avatar) if user.avatar else url_for('static', filename='images/default-avatar.png') }}" 
+                                             class="rounded-circle me-2" style="width: 32px; height: 32px; object-fit: cover;" 
+                                             alt="头像">
+                                        <span class="text-primary">{{ user.get_display_name() }}</span>
+                                    </a>
+                                </div>
+                                {% if post.content %}
+                                <p class="card-text">
+                                    {% set content = post.content %}
+                                    {% for topic in post.topics %}
+                                        {% set topic_text = '#' + topic.name %}
+                                        {% set content = content.replace(topic_text, '<a href="' + url_for('index', topic=topic.name) + '" class="text-primary text-decoration-none">' + topic_text + '</a>') %}
+                                    {% endfor %}
+                                    {{ content | safe }}
+                                </p>
+                                {% endif %}
+                                {% if post.images %}
+                                <div class="post-images">
+                                    {% for image in post.images %}
+                                    <img src="{{ url_for('static', filename=image.thumbnail) }}" 
+                                         class="post-image-thumbnail" 
+                                         data-original="{{ url_for('static', filename=image.original) }}" 
+                                         alt="Post image"
+                                         onclick="showImage(this.dataset.original)">
+                                    {% endfor %}
+                                </div>
+                                {% endif %}
+                                <p class="post-time mt-2 mb-0">{{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+                                <hr class="my-2">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div class="d-flex flex-column">
+                                        <div class="d-flex align-items-center">
+                                            <button class="btn btn-link text-decoration-none p-0 me-3" onclick="likePost({{ post.id }})">
+                                                {% set has_liked = post.likes.filter_by(user_id=current_user.id).first() is not none %}
+                                                <i class="bi bi-heart{% if has_liked %}-fill text-danger{% endif %}"></i>
+                                                <span class="ms-1">{{ post.likes.count() }}</span>
+                                            </button>
+                                            <button class="btn btn-link text-decoration-none p-0 me-3" onclick="toggleComments({{ post.id }})">
+                                                <i class="bi bi-chat"></i>
+                                                <span class="ms-1">{{ post.comments.count() }}</span>
+                                            </button>
+                                        </div>
+                                        {% if post.likes.count() > 0 %}
+                                        <div class="likes-info mt-1" style="font-size: 0.85em; color: #666; margin-left: 8px;">
+                                            {% for like in post.likes %}
+                                                {{ like.user.get_display_name() }}{% if not loop.last %}、{% endif %}
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    {% if current_user.id == post.author_id %}
+                                    <button class="btn btn-link text-decoration-none p-0" onclick="deletePost({{ post.id }})" style="color: #666;">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                                <!-- 评论区 -->
+                                <div id="comments-{{ post.id }}" class="comments-section mt-3" 
+                                     style="display: {% if request.args.get('show_comments')|int == post.id %}block{% else %}none{% endif %};">
+                                    <form method="POST" action="{{ url_for('add_comment', post_id=post.id) }}" enctype="multipart/form-data" class="comment-form" data-post-id="{{ post.id }}" onsubmit="return submitComment(this, {{ post.id }})">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <div class="d-flex gap-2">
+                                            <input type="text" class="form-control" name="content" placeholder="写下你的评论...">
+                                            <div class="position-relative" style="width: 40px;">
+                                                <input type="file" class="form-control form-control-sm position-absolute opacity-0" name="image" accept="image/*" style="cursor: pointer;">
+                                                <i class="bi bi-image text-primary" style="font-size: 1.2rem; cursor: pointer;"></i>
+                                            </div>
+                                            <button type="submit" class="btn btn-primary btn-sm">发送</button>
+                                        </div>
+                                    </form>
+                                    {% for comment in post.comments %}
+                                    {% if not comment.parent_id %}  {# 只显示顶级评论 #}
+                                    <div class="comment-item">
+                                        <div class="d-flex justify-content-between">
+                                            <div class="d-flex align-items-center">
+                                                <img src="{{ url_for('static', filename=comment.author.avatar) if comment.author.avatar else url_for('static', filename='images/default-avatar.png') }}" 
+                                                     class="rounded-circle me-2" style="width: 24px; height: 24px; object-fit: cover;" 
+                                                     alt="头像">
+                                                <small class="text-muted">{{ comment.author.get_display_name() }}</small>
+                                            </div>
+                                            <div class="d-flex align-items-center">
+                                                <small class="text-muted me-2">{{ comment.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                                                <button class="btn btn-link btn-sm text-decoration-none p-0 me-2" 
+                                                        onclick="showReplyForm({{ comment.id }}, '{{ comment.author.get_display_name() }}', {{ comment.id }})"
+                                                        style="color: #666; font-size: 0.875em;">
+                                                    回复
+                                                </button>
+                                                {% if comment.user_id == current_user.id %}
+                                                <button class="btn btn-link btn-sm text-decoration-none p-0" 
+                                                        onclick="deleteComment({{ comment.id }})" 
+                                                        style="color: #666; font-size: 0.875em;">
+                                                    删除
+                                                </button>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        {% if comment.content %}
+                                        <p class="mb-1 mt-2" style="color: #333;">{{ comment.content }}</p>
+                                        {% endif %}
+                                        {% if comment.images %}
+                                        <div class="comment-images">
+                                            {% for image in comment.images %}
+                                            <img src="{{ url_for('static', filename=image.thumbnail) }}" 
+                                                 class="comment-image-thumbnail" 
+                                                 data-original="{{ url_for('static', filename=image.original) }}" 
+                                                 alt="Comment image"
+                                                 onclick="showImage(this.dataset.original)">
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+
+                                        <!-- 回复表单 -->
+                                        <div id="reply-form-{{ comment.id }}" class="reply-form mt-2" style="display: none;">
+                                            <form method="POST" action="{{ url_for('add_comment', post_id=post.id, parent_id=comment.id) }}" 
+                                                  enctype="multipart/form-data" class="d-flex gap-2"
+                                                  onsubmit="return submitComment(this, {{ post.id }})">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                <input type="text" class="form-control form-control-sm" name="content" 
+                                                       placeholder="回复 {{ comment.author.get_display_name() }}...">
+                                                <button type="submit" class="btn btn-primary btn-sm">回复</button>
+                                            </form>
+                                        </div>
+
+                                        <!-- 回复列表 -->
+                                        {% if comment.replies %}
+                                        <div class="replies-section mt-2" style="margin-left: 20px;">
+                                            {% for reply in comment.replies %}
+                                            <div class="reply-item mb-2 p-2" style="background-color: #f8f9fa; border-radius: 4px;">
+                                                <div class="d-flex justify-content-between">
+                                                    <div class="d-flex align-items-center">
+                                                        <img src="{{ url_for('static', filename=reply.author.avatar) if reply.author.avatar else url_for('static', filename='images/default-avatar.png') }}" 
+                                                             class="rounded-circle me-2" style="width: 20px; height: 20px; object-fit: cover;" 
+                                                             alt="头像">
+                                                        <small class="text-muted">{{ reply.author.get_display_name() }}</small>
+                                                    </div>
+                                                    <div class="d-flex align-items-center">
+                                                        <small class="text-muted me-2">{{ reply.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                                                        <button class="btn btn-link btn-sm text-decoration-none p-0 me-2" 
+                                                                onclick="showReplyForm({{ comment.id }}, '{{ reply.author.get_display_name() }}', {{ reply.id }})"
+                                                                style="color: #666; font-size: 0.75em;">
+                                                            回复
+                                                        </button>
+                                                        {% if reply.user_id == current_user.id %}
+                                                        <button class="btn btn-link btn-sm text-decoration-none p-0" 
+                                                                onclick="deleteComment({{ reply.id }})"
+                                                                style="color: #666; font-size: 0.75em;">
+                                                            删除
+                                                        </button>
+                                                        {% endif %}
+                                                    </div>
+                                                </div>
+                                                <p class="mb-0 mt-1" style="color: #333; font-size: 0.9em;">
+                                                    {% if reply.parent_id != comment.id %}
+                                                    <span class="text-primary">@{{ reply.parent.author.get_display_name() }}</span>
+                                                    {% endif %}
+                                                    {{ reply.content }}
+                                                </p>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
                                         {% endif %}
                                     </div>
                                     {% endif %}
-                                {% endfor %}
-                            {% endif %}
-                            
-                            <!-- 发布时间 -->
-                            <small class="text-muted ms-2">
-                                <i class="bi bi-clock me-1"></i>
-                                {{ post.created_at|timesince }}
-                            </small>
-                        </div>
-                        
-                        <!-- 帖子作者信息 -->
-                        <div class="d-flex align-items-center mb-3">
-                            <a href="{{ url_for('user_profile', user_id=post.author.id) }}" class="text-decoration-none">
-                                <img src="{{ url_for('static', filename=post.author.avatar) if post.author.avatar else url_for('static', filename='images/default-avatar.png') }}" 
-                                     class="rounded-circle me-2" style="width: 40px; height: 40px; object-fit: cover;" 
-                                     alt="{{ post.author.get_display_name() }}的头像">
-                            </a>
-                            <div>
-                                <a href="{{ url_for('user_profile', user_id=post.author.id) }}" class="text-decoration-none">
-                                    <h6 class="mb-0">{{ post.author.get_display_name() }}</h6>
-                                </a>
-                                {% if post.author.is_profile_completed %}
-                                    {% if post.visibility != 'public' %}
-                                        {% set circle_id = post.visibility.split('_')[1]|int %}
-                                        {% for circle in current_user.circles %}
-                                            {% if circle.id == circle_id %}
-                                                <small class="text-muted">
-                                                    {% if circle.circle_type == 'hometown' %}
-                                                        来自{{ post.author.hometown_district.name }}
-                                                    {% else %}
-                                                        现居{{ post.author.current_district.name }}
-                                                    {% endif %}
-                                                </small>
-                                            {% endif %}
-                                        {% endfor %}
-                                    {% else %}
-                                        <small class="text-muted">
-                                            {{ post.author.current_district.name if post.author.current_district else '' }}
-                                        </small>
-                                    {% endif %}
-                                {% endif %}
+                                    {% endfor %}
+                                </div>
                             </div>
                         </div>
-                        
-                        <!-- 帖子内容 -->
-                        <p class="card-text">{{ post.content }}</p>
-                        {% if post.image %}
-                        <img src="{{ url_for('static', filename=post.image) }}" class="img-fluid rounded mb-3" alt="帖子图片">
-                        {% endif %}
-                        
-                        <!-- 帖子操作按钮 -->
-                        <div class="d-flex align-items-center mt-3">
-                            <button class="btn btn-link text-decoration-none me-3" onclick="likePost({{ post.id }})">
-                                <i class="bi {% if post in current_user.likes %}bi-heart-fill text-danger{% else %}bi-heart{% endif %}"></i>
-                                <span>{{ post.likes.count() }}</span>
-                            </button>
-                            <button class="btn btn-link text-decoration-none" onclick="toggleComments({{ post.id }})">
-                                <i class="bi bi-chat"></i>
-                                <span>{{ post.comments.count() }}</span>
-                            </button>
+                        {% endfor %}
+                    </div>
+
+                    <!-- 话题列表 -->
+                    <div class="card topics-card">
+                        <div class="card-header">
+                            <h5 class="mb-0">话题</h5>
+                            {% if current_topic %}
+                            <a href="{{ url_for('index') }}" class="btn btn-link btn-sm text-decoration-none p-0">
+                                <small>显示全部</small>
+                            </a>
+                            {% endif %}
+                        </div>
+                        <div class="card-body">
+                            <div class="topics-list">
+                                {% for topic in hot_topics %}
+                                <div class="topic-item d-flex justify-content-between align-items-center mb-2 {% if current_topic == topic.name %}active{% endif %}">
+                                    <a href="{{ url_for('index', topic=topic.name) }}" class="text-decoration-none {% if current_topic == topic.name %}text-primary{% else %}text-dark{% endif %} text-truncate">
+                                        #{{ topic.name }}
+                                    </a>
+                                    <span class="badge {% if current_topic == topic.name %}bg-primary{% else %}bg-secondary{% endif %} rounded-pill flex-shrink-0">{{ topic.post_count }}</span>
+                                </div>
+                                {% endfor %}
+                            </div>
                         </div>
                     </div>
                 </div>
-                {% endfor %}
-
-                <!-- 分页 -->
-                {% if posts.pages > 1 %}
-                <nav aria-label="Page navigation" class="mt-4">
-                    <ul class="pagination justify-content-center">
-                        {% for page in range(1, posts.pages + 1) %}
-                        <li class="page-item {% if page == posts.page %}active{% endif %}">
-                            <a class="page-link" href="{{ url_for('index', page=page, circle=request.args.get('circle')) }}">
-                                {{ page }}
-                            </a>
-                        </li>
-                        {% endfor %}
-                    </ul>
-                </nav>
                 {% endif %}
             </div>
         </div>

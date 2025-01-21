@@ -2,25 +2,37 @@
 
 {% block extra_style %}
 <style>
+    /* 用户主页布局样式 */
     .profile-container {
         width: 40vw;
-        min-width: 500px;  /* 最小宽度 */
         margin: 0 auto;
     }
 
-    @media (max-width: 500px) {
-        .profile-container {
-            width: 100%;
-            min-width: auto;
-            padding: 0 15px;
-        }
-    }
-
+    /* 用户信息卡片样式 */
     .profile-card {
         width: 100%;
         margin-bottom: 20px;
         border-radius: 10px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    /* 微博卡片样式 */
+    .post-card {
+        width: 100%;
+        margin-bottom: 20px;
+    }
+
+    /* 响应式布局 */
+    @media (max-width: 1000px) {
+        .profile-container {
+            width: 400px;  /* 当视窗宽度小于1000px时，固定宽度为400px */
+        }
+    }
+
+    @media (max-width: 450px) {
+        .profile-container {
+            width: 90%;  /* 当视窗宽度小于450px时，使用90%宽度 */
+        }
     }
 </style>
 {% endblock %}
