@@ -1,71 +1,62 @@
 {% extends "base.html" %}
 
-<<<<<<< HEAD
 {% block extra_style %}
 <style>
-    /* 用户主页布局样式 */
+    /* 固定宽度布局 */
     .profile-container {
         width: 40vw;
         margin: 0 auto;
     }
-
-    /* 用户信息卡片样式 */
-    .profile-card {
-        width: 100%;
-        margin-bottom: 20px;
-        border-radius: 10px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-
-    /* 微博卡片样式 */
-    .post-card {
-        width: 100%;
-        margin-bottom: 20px;
-    }
-
+    
     /* 响应式布局 */
     @media (max-width: 1000px) {
         .profile-container {
-            width: 400px;  /* 当视窗宽度小于1000px时，固定宽度为400px */
+            width: 400px;  /* 当视窗宽度小于1000px时，固定为400px */
         }
     }
-
+    
     @media (max-width: 450px) {
         .profile-container {
             width: 90%;  /* 当视窗宽度小于450px时，使用90%宽度 */
         }
     }
+    
+    .user-info-card {
+        border-radius: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
 </style>
 {% endblock %}
 
-=======
->>>>>>> parent of 7886766 (1.5 可用版本)
 {% block content %}
 <div class="container py-4">
-    <!-- 用户信息卡片 -->
-    <div class="card mb-4 mx-auto" style="width: 40%;">
-        <div class="card-body">
-            <div class="d-flex align-items-center">
-                <img src="{{ url_for('static', filename=profile_user.avatar) if profile_user.avatar else url_for('static', filename='images/default-avatar.png') }}" 
-                     class="rounded-circle me-3" style="width: 64px; height: 64px; object-fit: cover;" 
-                     alt="头像">
-                <div>
-                    <h4 class="mb-1">
-                        {{ profile_user.get_display_name() }}
-                        {% if profile_user.location %}
-                            <span class="location-tag">{{ profile_user.location }}</span>
-                        {% endif %}
-                    </h4>
+    <div class="profile-container">
+        <!-- 用户信息卡片 -->
+        <div class="card user-info-card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <img src="{{ url_for('static', filename=profile_user.avatar) if profile_user.avatar else url_for('static', filename='images/default-avatar.png') }}" 
+                         class="rounded-circle me-3" style="width: 64px; height: 64px; object-fit: cover;" 
+                         alt="头像">
+                    <div>
+                        <h4 class="mb-1">
+                            {{ profile_user.get_display_name() }}
+                            {% if profile_user.location %}
+                                <span class="location-tag">{{ profile_user.location }}</span>
+                            {% endif %}
+                        </h4>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- 用户的微博列表 -->
-    {% for post, user in posts %}
-    <div class="card post-card mx-auto" style="width: 40%;" data-post-id="{{ post.id }}" id="post-{{ post.id }}">
-        {% include '_post.html' %}
+        <!-- 用户的微博列表 -->
+        {% for post, user in posts %}
+        <div class="card post-card" data-post-id="{{ post.id }}" id="post-{{ post.id }}">
+            {% include '_post.html' %}
+        </div>
+        {% endfor %}
     </div>
-    {% endfor %}
 </div>
 {% endblock %} 
