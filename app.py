@@ -14,6 +14,7 @@ from itsdangerous import URLSafeTimedSerializer
 from flask_mail import Mail, Message
 from flask_wtf.csrf import CSRFProtect, validate_csrf, ValidationError
 from flask_wtf import FlaskForm
+import shutil
 
 # 允许的图片文件扩展名
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
@@ -472,48 +473,32 @@ def index():
 def delete_post(post_id):
     post = Post.query.get_or_404(post_id)
     
-    # 验证当前用户是否为微博作者
+    # 检查是否是帖子作者
     if post.author_id != current_user.id:
-        return jsonify({'success': False, 'message': '无权删除此微博'}), 403
+        return jsonify({'success': False, 'message': '没有权限删除此帖子'})
     
     try:
-        # 先删除所有相关的点赞
-        Like.query.filter_by(post_id=post_id).delete()
-        
-        # 删除所有相关的评论
-        Comment.query.filter_by(post_id=post_id).delete()
-        
-        # 删除相关的媒体文件
+        # 删除相关的图片文件
         if post.images:
-            for media in post.images:
-                if media['type'] == 'video':
-                    # 删除视频文件
-                    video_path = os.path.join(app.config['UPLOAD_FOLDER'], os.path.basename(media['url']))
-                    if os.path.exists(video_path):
-                        os.remove(video_path)
-                elif media['type'] == 'image':
-                    # 删除原图
-                    original_path = os.path.join(app.config['UPLOAD_FOLDER'], os.path.basename(media['original']))
-                    if os.path.exists(original_path):
-                        os.remove(original_path)
-                    
-                    # 删除缩略图
-                    thumbnail_path = os.path.join(app.config['THUMBNAIL_FOLDER'], os.path.basename(media['thumbnail']))
-                    if os.path.exists(thumbnail_path):
-                        os.remove(thumbnail_path)
+            for image in post.images:
+                # 删除原图
+                original_path = os.path.join(app.root_path, 'static', image['original'])
+                if os.path.exists(original_path):
+                    os.remove(original_path)
+                
+                # 删除缩略图
+                thumbnail_path = os.path.join(app.root_path, 'static', image['thumbnail'])
+                if os.path.exists(thumbnail_path):
+                    os.remove(thumbnail_path)
         
-        # 删除数据库中的微博记录
+        # 删除帖子（级联删除相关的点赞和评论）
         db.session.delete(post)
         db.session.commit()
         
         return jsonify({'success': True})
-    
     except Exception as e:
         db.session.rollback()
-        return jsonify({
-            'success': False,
-            'message': '删除微博失败：' + str(e)
-        }), 500
+        return jsonify({'success': False, 'message': f'删除失败: {str(e)}'})
 
 @app.route('/delete_comment/<int:comment_id>', methods=['POST'])
 @login_required
@@ -731,7 +716,33 @@ def timesince_filter(dt):
     else:
         return "刚刚"
 
-
+# 定期清理未使用的图片文件
+@app.cli.command('cleanup-images')
+def cleanup_images():
+    """清理未被任何帖子引用的图片文件"""
+    # 获取所有帖子引用的图片路径
+    used_images = set()
+    posts = Post.query.all()
+    for post in posts:
+        if post.images:
+            for image in post.images:
+                used_images.add(os.path.join(app.root_path, 'static', image['original']))
+                used_images.add(os.path.join(app.root_path, 'static', image['thumbnail']))
+    
+    # 检查并删除未使用的图片
+    uploads_dir = os.path.join(app.root_path, 'static', 'uploads')
+    thumbnails_dir = os.path.join(app.root_path, 'static', 'thumbnails')
+    
+    for directory in [uploads_dir, thumbnails_dir]:
+        for root, dirs, files in os.walk(directory):
+            for file in files:
+                file_path = os.path.join(root, file)
+                if file_path not in used_images:
+                    try:
+                        os.remove(file_path)
+                        print(f'Removed unused file: {file_path}')
+                    except Exception as e:
+                        print(f'Error removing {file_path}: {e}')
 
 if __name__ == '__main__':
     app.run(debug=True)
