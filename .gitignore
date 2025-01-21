@@ -1,3 +1,7 @@
+static/images/
+static/thumbnails/
+static/uploads/
+venv/
 instance/
 *.db
 __pycache__/
