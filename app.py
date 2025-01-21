@@ -3,7 +3,7 @@ import re
 import uuid
 import random
 from datetime import datetime, timezone, timedelta
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from werkzeug.utils import secure_filename
@@ -15,6 +15,7 @@ from flask_mail import Mail, Message
 from flask_wtf.csrf import CSRFProtect, validate_csrf, ValidationError
 from flask_wtf import FlaskForm
 import shutil
+from sqlalchemy import event
 
 # 允许的图片文件扩展名
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
@@ -139,6 +140,19 @@ class Comment(db.Model):
     replies = db.relationship('Comment', backref=db.backref('parent', remote_side=[id]), post_update=True,
                            cascade='all, delete-orphan')
 
+# 定义Topic模型
+class Topic(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), unique=True, nullable=False)
+    post_count = db.Column(db.Integer, default=0, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone(timedelta(hours=8))))
+
+# 帖子和话题的关联表
+post_topics = db.Table('post_topics',
+    db.Column('post_id', db.Integer, db.ForeignKey('post.id', ondelete='CASCADE')),
+    db.Column('topic_id', db.Integer, db.ForeignKey('topic.id', ondelete='CASCADE'))
+)
+
 # 定义Post模型
 class Post(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -146,11 +160,9 @@ class Post(db.Model):
     images = db.Column(db.JSON, default=list)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone(timedelta(hours=8))))
     author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    # 确保删除帖子时级联删除相关的点赞和评论
-    likes = db.relationship('Like', backref='post', lazy='dynamic', 
-                          cascade='all, delete-orphan', passive_deletes=True)
-    comments = db.relationship('Comment', backref='post', lazy='dynamic', 
-                             cascade='all, delete-orphan', passive_deletes=True)
+    topics = db.relationship('Topic', secondary='post_topics', backref='posts')
+    likes = db.relationship('Like', backref='post', lazy='dynamic', cascade='all, delete-orphan')
+    comments = db.relationship('Comment', backref='post', lazy='dynamic', cascade='all, delete-orphan')
 
 # 创建数据库表
 with app.app_context():
@@ -228,8 +240,6 @@ def register():
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
-
-
 
         send_verification_email(user)
         flash('验证码已发送到您的邮箱', 'info')
@@ -407,6 +417,10 @@ def add_comment(post_id):
 def index():
     from flask_wtf import FlaskForm
     form = FlaskForm()
+    
+    # 获取话题筛选参数
+    topic_name = request.args.get('topic')
+    
     if request.method == 'POST':
         if not form.validate():
             flash('表单验证失败，请重试', 'danger')
@@ -421,6 +435,20 @@ def index():
         
         try:
             post = Post(content=content, author=current_user)
+            
+            # 解析话题标签 - 修改正则表达式以准确匹配#后到空格前的内容
+            topics = re.findall(r'#([^\s#]+)', content)
+            for topic_name in topics:
+                # 移除可能存在的标点符号
+                topic_name = topic_name.strip(',.!?，。！？')
+                topic = Topic.query.filter_by(name=topic_name).first()
+                if not topic:
+                    topic = Topic(name=topic_name, post_count=0)
+                    db.session.add(topic)
+                if topic.post_count is None:
+                    topic.post_count = 0
+                topic.post_count += 1
+                post.topics.append(topic)
             
             # 处理图片上传
             if images:
@@ -457,10 +485,18 @@ def index():
             flash(f'发布失败：{str(e)}', 'danger')
             return redirect(url_for('index'))
     
+    # 获取热门话题
+    hot_topics = Topic.query.order_by(Topic.post_count.desc()).limit(10).all()
+    
+    # 构建基础查询
+    query = db.session.query(Post, User).join(User, Post.author_id == User.id)
+    
+    # 如果指定了话题，添加话题筛选条件
+    if topic_name:
+        query = query.join(post_topics).join(Topic).filter(Topic.name == topic_name)
+    
     # 获取所有帖子，按时间倒序排列
-    posts = db.session.query(Post, User)\
-        .join(User, Post.author_id == User.id)\
-        .order_by(Post.created_at.desc()).all()
+    posts = query.order_by(Post.created_at.desc()).all()
     
     # 处理图片 URL
     for post, user in posts:
@@ -469,7 +505,11 @@ def index():
                 image['thumbnail_url'] = url_for('static', filename=image['thumbnail'])
                 image['original_url'] = url_for('static', filename=image['original'])
     
-    return render_template('index.html', posts=posts, form=form)
+    return render_template('index.html', 
+                         posts=posts, 
+                         form=form, 
+                         hot_topics=hot_topics,
+                         current_topic=topic_name)  # 传递当前选中的话题到模板
 
 @app.route('/delete_post/<int:post_id>', methods=['POST'])
 @login_required
@@ -484,27 +524,20 @@ def delete_post(post_id):
         # 删除相关的图片文件
         if post.images:
             for image in post.images:
-                # 获取文件路径
-                original_path = os.path.join('static', image['original'])
-                thumbnail_path = os.path.join('static', image['thumbnail'])
-                
                 # 删除原图
-                original_full_path = os.path.join(app.root_path, original_path)
-                try:
-                    if os.path.exists(original_full_path):
-                        os.remove(original_full_path)
-                        print(f"Deleted original image: {original_full_path}")
-                except Exception as e:
-                    print(f"Error deleting original image {original_full_path}: {e}")
+                original_path = os.path.join(app.root_path, 'static', image['original'])
+                if os.path.exists(original_path):
+                    os.remove(original_path)
                 
                 # 删除缩略图
-                thumbnail_full_path = os.path.join(app.root_path, thumbnail_path)
-                try:
-                    if os.path.exists(thumbnail_full_path):
-                        os.remove(thumbnail_full_path)
-                        print(f"Deleted thumbnail image: {thumbnail_full_path}")
-                except Exception as e:
-                    print(f"Error deleting thumbnail image {thumbnail_full_path}: {e}")
+                thumbnail_path = os.path.join(app.root_path, 'static', image['thumbnail'])
+                if os.path.exists(thumbnail_path):
+                    os.remove(thumbnail_path)
+        
+        # 更新话题计数
+        for topic in post.topics:
+            if topic.post_count > 0:
+                topic.post_count -= 1
         
         # 删除帖子（级联删除相关的点赞和评论）
         db.session.delete(post)
@@ -514,7 +547,7 @@ def delete_post(post_id):
     except Exception as e:
         db.session.rollback()
         error_msg = f'删除失败: {str(e)}'
-        print(error_msg)  # 记录错误信息
+        print(error_msg)
         return jsonify({'success': False, 'message': error_msg})
 
 @app.route('/delete_comment/<int:comment_id>', methods=['POST'])
@@ -760,6 +793,13 @@ def cleanup_images():
                         print(f'Removed unused file: {file_path}')
                     except Exception as e:
                         print(f'Error removing {file_path}: {e}')
+
+# 监听删除帖子事件，更新话题计数
+@event.listens_for(Post, 'after_delete')
+def update_topic_count_on_post_delete(mapper, connection, target):
+    for topic in target.topics:
+        if topic.post_count > 0:
+            topic.post_count -= 1
 
 if __name__ == '__main__':
     app.run(debug=True)
