@@ -146,8 +146,11 @@ class Post(db.Model):
     images = db.Column(db.JSON, default=list)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone(timedelta(hours=8))))
     author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    likes = db.relationship('Like', backref='post', lazy='dynamic', cascade='all, delete-orphan')
-    comments = db.relationship('Comment', backref='post', lazy='dynamic', cascade='all, delete-orphan')
+    # 确保删除帖子时级联删除相关的点赞和评论
+    likes = db.relationship('Like', backref='post', lazy='dynamic', 
+                          cascade='all, delete-orphan', passive_deletes=True)
+    comments = db.relationship('Comment', backref='post', lazy='dynamic', 
+                             cascade='all, delete-orphan', passive_deletes=True)
 
 # 创建数据库表
 with app.app_context():
@@ -481,15 +484,27 @@ def delete_post(post_id):
         # 删除相关的图片文件
         if post.images:
             for image in post.images:
+                # 获取文件路径
+                original_path = os.path.join('static', image['original'])
+                thumbnail_path = os.path.join('static', image['thumbnail'])
+                
                 # 删除原图
-                original_path = os.path.join(app.root_path, 'static', image['original'])
-                if os.path.exists(original_path):
-                    os.remove(original_path)
+                original_full_path = os.path.join(app.root_path, original_path)
+                try:
+                    if os.path.exists(original_full_path):
+                        os.remove(original_full_path)
+                        print(f"Deleted original image: {original_full_path}")
+                except Exception as e:
+                    print(f"Error deleting original image {original_full_path}: {e}")
                 
                 # 删除缩略图
-                thumbnail_path = os.path.join(app.root_path, 'static', image['thumbnail'])
-                if os.path.exists(thumbnail_path):
-                    os.remove(thumbnail_path)
+                thumbnail_full_path = os.path.join(app.root_path, thumbnail_path)
+                try:
+                    if os.path.exists(thumbnail_full_path):
+                        os.remove(thumbnail_full_path)
+                        print(f"Deleted thumbnail image: {thumbnail_full_path}")
+                except Exception as e:
+                    print(f"Error deleting thumbnail image {thumbnail_full_path}: {e}")
         
         # 删除帖子（级联删除相关的点赞和评论）
         db.session.delete(post)
@@ -498,7 +513,9 @@ def delete_post(post_id):
         return jsonify({'success': True})
     except Exception as e:
         db.session.rollback()
-        return jsonify({'success': False, 'message': f'删除失败: {str(e)}'})
+        error_msg = f'删除失败: {str(e)}'
+        print(error_msg)  # 记录错误信息
+        return jsonify({'success': False, 'message': error_msg})
 
 @app.route('/delete_comment/<int:comment_id>', methods=['POST'])
 @login_required
