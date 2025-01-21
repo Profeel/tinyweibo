@@ -684,12 +684,24 @@
                 .then(data => {
                     if (data.success) {
                         if (commentElement) {
+                            const isReply = commentElement.classList.contains('reply');
+                            const parentComment = isReply ? commentElement.closest('.comment') : null;
+
                             commentElement.style.transition = 'all 0.3s ease';
                             commentElement.style.opacity = '0';
                             commentElement.style.transform = 'translateY(-10px)';
                             setTimeout(() => {
                                 commentElement.remove();
                                 commentsCountElement.textContent = ` ${data.comments_count}`;
+                                
+                                // 如果是回复评论，更新父评论的回复数量
+                                if (isReply && parentComment) {
+                                    const repliesCount = parentComment.querySelectorAll('.reply').length;
+                                    const repliesCountElement = parentComment.querySelector('.replies-count');
+                                    if (repliesCountElement) {
+                                        repliesCountElement.textContent = `${repliesCount} 条回复`;
+                                    }
+                                }
                             }, 300);
                         }
                     } else {
