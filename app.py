@@ -8,7 +8,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from werkzeug.utils import secure_filename
 from PIL import Image
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user, AnonymousUserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer
 from flask_mail import Mail, Message
@@ -16,6 +16,8 @@ from flask_wtf.csrf import CSRFProtect, validate_csrf, ValidationError
 from flask_wtf import FlaskForm
 import shutil
 from sqlalchemy import event
+import time
+from sqlalchemy import or_, and_
 
 # 允许的图片文件扩展名
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
@@ -69,18 +71,62 @@ os.makedirs(os.path.join('static', 'uploads', 'avatars'), exist_ok=True)
 os.makedirs(os.path.join('static', 'thumbnails', 'avatars'), exist_ok=True)
 os.makedirs(os.path.join('static', 'images'), exist_ok=True)
 
+# 定义地区模型
+class Region(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False)
+    parent_id = db.Column(db.Integer, db.ForeignKey('region.id'))
+    level = db.Column(db.String(20), nullable=False)  # province, city, district
+    children = db.relationship('Region', backref=db.backref('parent', remote_side=[id]))
+
+# 定义圈子模型
+class Circle(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    region_id = db.Column(db.Integer, db.ForeignKey('region.id'), nullable=False)
+    circle_type = db.Column(db.String(20), nullable=False)  # hometown: 老家圈, current: 现居圈
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone(timedelta(hours=8))))
+    region = db.relationship('Region', backref='circles')
+
+# 用户和圈子的关联表
+user_circles = db.Table('user_circles',
+    db.Column('user_id', db.Integer, db.ForeignKey('user.id', ondelete='CASCADE')),
+    db.Column('circle_id', db.Integer, db.ForeignKey('circle.id', ondelete='CASCADE'))
+)
+
+# 帖子和圈子的关联表
+post_circles = db.Table('post_circles',
+    db.Column('post_id', db.Integer, db.ForeignKey('post.id', ondelete='CASCADE')),
+    db.Column('circle_id', db.Integer, db.ForeignKey('circle.id', ondelete='CASCADE'))
+)
+
+# 修改User模型，添加地区相关字段
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(120), unique=True)
     phone = db.Column(db.String(20), unique=True)
     nickname = db.Column(db.String(50))  # 昵称
     avatar = db.Column(db.String(200))   # 头像路径
-    location = db.Column(db.String(50))  # 工作地
+    hometown_province_id = db.Column(db.Integer, db.ForeignKey('region.id'))  # 故乡省
+    hometown_city_id = db.Column(db.Integer, db.ForeignKey('region.id'))      # 故乡市
+    hometown_district_id = db.Column(db.Integer, db.ForeignKey('region.id'))  # 故乡区
+    current_province_id = db.Column(db.Integer, db.ForeignKey('region.id'))   # 现居省
+    current_city_id = db.Column(db.Integer, db.ForeignKey('region.id'))       # 现居市
+    current_district_id = db.Column(db.Integer, db.ForeignKey('region.id'))   # 现居区
+    is_profile_completed = db.Column(db.Boolean, default=False)  # 是否已完善个人信息
     password_hash = db.Column(db.String(128))
     is_verified = db.Column(db.Boolean, default=False)
     verification_code = db.Column(db.String(6))
     verification_code_expires = db.Column(db.DateTime)
     posts = db.relationship('Post', backref='author', lazy=True)
+    circles = db.relationship('Circle', secondary='user_circles', backref='users')
+    
+    hometown_province = db.relationship('Region', foreign_keys=[hometown_province_id])
+    hometown_city = db.relationship('Region', foreign_keys=[hometown_city_id])
+    hometown_district = db.relationship('Region', foreign_keys=[hometown_district_id])
+    current_province = db.relationship('Region', foreign_keys=[current_province_id])
+    current_city = db.relationship('Region', foreign_keys=[current_city_id])
+    current_district = db.relationship('Region', foreign_keys=[current_district_id])
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -153,7 +199,7 @@ post_topics = db.Table('post_topics',
     db.Column('topic_id', db.Integer, db.ForeignKey('topic.id', ondelete='CASCADE'))
 )
 
-# 定义Post模型
+# 修改Post模型，添加圈子关联
 class Post(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     content = db.Column(db.Text, nullable=False)
@@ -161,12 +207,15 @@ class Post(db.Model):
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone(timedelta(hours=8))))
     author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     topics = db.relationship('Topic', secondary='post_topics', backref='posts')
+    circles = db.relationship('Circle', secondary='post_circles', backref='posts')
     likes = db.relationship('Like', backref='post', lazy='dynamic', cascade='all, delete-orphan')
     comments = db.relationship('Comment', backref='post', lazy='dynamic', cascade='all, delete-orphan')
+    visibility = db.Column(db.String(20))  # 帖子可见性
 
 # 创建数据库表
 with app.app_context():
-    db.create_all()
+    db.drop_all()  # 先删除所有表
+    db.create_all()  # 重新创建所有表
 
 def create_thumbnail(image_path, thumbnail_path, size):
     """创建等比例缩略图，保持图片比例"""
@@ -412,104 +461,95 @@ def add_comment(post_id):
             'message': '评论失败：' + str(e)
         }), 500
 
-@app.route('/', methods=['GET', 'POST'])
-@login_required
+@app.route('/')
 def index():
-    from flask_wtf import FlaskForm
-    form = FlaskForm()
-    
-    # 获取话题筛选参数
-    topic_name = request.args.get('topic')
-    
-    if request.method == 'POST':
-        if not form.validate():
-            flash('表单验证失败，请重试', 'danger')
-            return redirect(url_for('index'))
-        
-        content = request.form.get('content', '')
-        images = request.files.getlist('image')
-        
-        if not content and not images:
-            flash('内容和图片至少需要一个', 'danger')
-            return redirect(url_for('index'))
-        
-        try:
-            post = Post(content=content, author=current_user)
-            
-            # 解析话题标签 - 修改正则表达式以准确匹配#后到空格前的内容
-            topics = re.findall(r'#([^\s#]+)', content)
-            for topic_name in topics:
-                # 移除可能存在的标点符号
-                topic_name = topic_name.strip(',.!?，。！？')
-                topic = Topic.query.filter_by(name=topic_name).first()
-                if not topic:
-                    topic = Topic(name=topic_name, post_count=0)
-                    db.session.add(topic)
-                if topic.post_count is None:
-                    topic.post_count = 0
-                topic.post_count += 1
-                post.topics.append(topic)
-            
-            # 处理图片上传
-            if images:
-                image_list = []
-                for image in images:
-                    if image and allowed_file(image.filename):
-                        filename = secure_filename(image.filename)
-                        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-                        unique_filename = f"{timestamp}_{filename}"
-                        
-                        # 保存原图
-                        original_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
-                        image.save(original_path)
-                        
-                        # 创建缩略图
-                        thumbnail_path = os.path.join(app.config['THUMBNAIL_FOLDER'], unique_filename)
-                        create_thumbnail(original_path, thumbnail_path, app.config['THUMBNAIL_SIZE'])
-                        
-                        # 记录图片信息
-                        image_list.append({
-                            'original': os.path.join('uploads', unique_filename),
-                            'thumbnail': os.path.join('thumbnails', unique_filename)
-                        })
-                
-                post.images = image_list
-            
-            db.session.add(post)
-            db.session.commit()
-            
-            flash('发布成功', 'success')
-            return redirect(url_for('index'))
-        except Exception as e:
-            db.session.rollback()
-            flash(f'发布失败：{str(e)}', 'danger')
-            return redirect(url_for('index'))
-    
-    # 获取热门话题
-    hot_topics = Topic.query.order_by(Topic.post_count.desc()).limit(10).all()
+    # 获取查询参数
+    page = request.args.get('page', 1, type=int)
+    topic = request.args.get('topic')
+    circle_id = request.args.get('circle')
     
     # 构建基础查询
-    query = db.session.query(Post, User).join(User, Post.author_id == User.id)
+    query = Post.query
     
-    # 如果指定了话题，添加话题筛选条件
-    if topic_name:
-        query = query.join(post_topics).join(Topic).filter(Topic.name == topic_name)
+    # 如果用户已登录，获取其可见的帖子
+    if current_user.is_authenticated:
+        # 获取用户所在的圈子ID列表
+        user_circle_ids = [circle.id for circle in current_user.circles]
+        
+        # 构建可见性条件：公开帖子 OR 用户所在圈子的帖子
+        visibility_condition = or_(
+            Post.visibility == 'public',
+            and_(
+                Post.visibility.like('circle_%'),
+                Post.visibility.in_(['circle_' + str(id) for id in user_circle_ids])
+            )
+        )
+        query = query.filter(visibility_condition)
+    else:
+        # 未登录用户只能看到公开帖子
+        query = query.filter_by(visibility='public')
     
-    # 获取所有帖子，按时间倒序排列
-    posts = query.order_by(Post.created_at.desc()).all()
+    # 按话题筛选
+    if topic:
+        query = query.join(Post.topics).filter(Topic.name == topic)
     
-    # 处理图片 URL
-    for post, user in posts:
-        if post.images:
-            for image in post.images:
-                image['thumbnail_url'] = url_for('static', filename=image['thumbnail'])
-                image['original_url'] = url_for('static', filename=image['original'])
+    # 按圈子筛选
+    if circle_id:
+        query = query.filter(Post.visibility == f'circle_{circle_id}')
     
-    return render_template('index.html', 
-                         posts=posts, 
-                         form=form, 
-                         hot_topics=hot_topics,
-                         current_topic=topic_name)  # 传递当前选中的话题到模板
+    # 按时间倒序排序并分页
+    posts = query.order_by(Post.created_at.desc()).paginate(
+        page=page, per_page=10, error_out=False)
+    
+    return render_template('index.html', posts=posts, current_topic=topic)
+
+@app.route('/create_post', methods=['POST'])
+@login_required
+def create_post():
+    content = request.form.get('content')
+    visibility = request.form.get('visibility')
+    image = request.files.get('image')
+    
+    if not content:
+        flash('内容不能为空', 'danger')
+        return redirect(url_for('index'))
+    
+    # 如果选择了圈子可见性，检查用户是否属于该圈子
+    if visibility.startswith('circle_'):
+        circle_id = int(visibility.split('_')[1])
+        if not any(circle.id == circle_id for circle in current_user.circles):
+            flash('您不属于选择的圈子', 'danger')
+            return redirect(url_for('index'))
+    
+    # 创建帖子
+    post = Post(
+        content=content,
+        author=current_user,
+        visibility=visibility
+    )
+    
+    # 处理图片上传
+    if image and allowed_file(image.filename):
+        filename = secure_filename(f"post_{int(time.time())}_{image.filename}")
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], 'posts', filename)
+        os.makedirs(os.path.dirname(image_path), exist_ok=True)
+        image.save(image_path)
+        post.image = os.path.join('posts', filename)
+    
+    # 提取并处理话题标签
+    topics = extract_topics(content)
+    for topic_name in topics:
+        topic = Topic.query.filter_by(name=topic_name).first()
+        if not topic:
+            topic = Topic(name=topic_name)
+            db.session.add(topic)
+        post.topics.append(topic)
+    
+    db.session.add(post)
+    db.session.commit()
+    
+    flash('发布成功', 'success')
+    return redirect(url_for('index'))
 
 @app.route('/delete_post/<int:post_id>', methods=['POST'])
 @login_required
@@ -597,59 +637,107 @@ def delete_comment(comment_id):
 @login_required
 def profile():
     if request.method == 'POST':
+        # 获取表单数据
         nickname = request.form.get('nickname')
-        location = request.form.get('location')
-        avatar = request.files.get('avatar')
+        hometown_province_id = request.form.get('hometown_province')
+        hometown_city_id = request.form.get('hometown_city')
+        hometown_district_id = request.form.get('hometown_district')
+        current_province_id = request.form.get('current_province')
+        current_city_id = request.form.get('current_city')
+        current_district_id = request.form.get('current_district')
         
-        if nickname:
-            current_user.nickname = nickname
-            
-        if location:
-            current_user.location = location
-        else:
-            current_user.location = None  # 如果用户清空了工作地，则设为 None
+        # 处理头像上传
+        if 'avatar' in request.files:
+            avatar = request.files['avatar']
+            if avatar and allowed_file(avatar.filename):
+                filename = secure_filename(f"avatar_{current_user.id}_{int(time.time())}{os.path.splitext(avatar.filename)[1]}")
+                avatar_path = os.path.join(app.config['UPLOAD_FOLDER'], 'avatars', filename)
+                os.makedirs(os.path.dirname(avatar_path), exist_ok=True)
+                avatar.save(avatar_path)
+                current_user.avatar = os.path.join('avatars', filename)
+
+        # 更新用户信息
+        current_user.nickname = nickname
+        current_user.hometown_province_id = hometown_province_id
+        current_user.hometown_city_id = hometown_city_id
+        current_user.hometown_district_id = hometown_district_id
+        current_user.current_province_id = current_province_id
+        current_user.current_city_id = current_city_id
+        current_user.current_district_id = current_district_id
         
-        if avatar and avatar.filename:
-            # 生成唯一的文件名
-            ext = os.path.splitext(avatar.filename)[1]
-            unique_filename = f"avatar_{current_user.id}_{uuid.uuid4()}{ext}"
+        # 检查是否所有必填字段都已填写
+        if (current_user.avatar and current_user.nickname and
+            all([hometown_province_id, hometown_city_id, hometown_district_id,
+                 current_province_id, current_city_id, current_district_id])):
+            current_user.is_profile_completed = True
             
-            # 确保头像目录存在
-            avatar_folder = os.path.join('static', 'uploads', 'avatars')
-            os.makedirs(avatar_folder, exist_ok=True)
-            
-            # 保存头像
-            avatar_path = os.path.join(avatar_folder, unique_filename)
-            avatar.save(avatar_path)
-            
-            # 生成并保存头像缩略图
-            thumbnail_folder = os.path.join('static', 'thumbnails', 'avatars')
-            os.makedirs(thumbnail_folder, exist_ok=True)
-            thumbnail_path = os.path.join(thumbnail_folder, unique_filename)
-            
-            # 创建正方形缩略图
-            with Image.open(avatar_path) as img:
-                # 确定裁剪尺寸
-                width, height = img.size
-                size = min(width, height)
-                left = (width - size) // 2
-                top = (height - size) // 2
-                right = left + size
-                bottom = top + size
-                
-                # 裁剪为正方形并调整大小
-                img = img.crop((left, top, right, bottom))
-                img.thumbnail((100, 100))  # 调整为100x100的缩略图
-                img.save(thumbnail_path)
-            
-            # 更新用户头像路径
-            current_user.avatar = f"uploads/avatars/{unique_filename}"
+            # 更新用户圈子
+            update_user_circles(current_user)
         
         db.session.commit()
         flash('个人资料已更新', 'success')
         return redirect(url_for('profile'))
     
-    return render_template('profile.html')
+    # GET请求：获取所有省份数据
+    provinces = Region.query.filter_by(level='province').all()
+    return render_template('profile.html', provinces=provinces)
+
+def update_user_circles(user):
+    """更新用户的圈子成员关系"""
+    # 清除用户现有的圈子关系
+    user.circles = []
+    
+    # 添加故乡圈子
+    hometown_province = Region.query.get(user.hometown_province_id)
+    hometown_city = Region.query.get(user.hometown_city_id)
+    hometown_district = Region.query.get(user.hometown_district_id)
+    
+    # 添加现居地圈子
+    current_province = Region.query.get(user.current_province_id)
+    current_city = Region.query.get(user.current_city_id)
+    current_district = Region.query.get(user.current_district_id)
+    
+    # 获取或创建相应的圈子
+    circles_to_add = []
+    
+    # 故乡圈子
+    hometown_district_circle = Circle.query.filter_by(
+        region_id=hometown_district.id,
+        circle_type='hometown'
+    ).first() or Circle(
+        name=f"{hometown_district.name}老乡圈",
+        region_id=hometown_district.id,
+        circle_type='hometown'
+    )
+    circles_to_add.append(hometown_district_circle)
+    
+    # 现居地城市圈子
+    current_city_circle = Circle.query.filter_by(
+        region_id=current_city.id,
+        circle_type='current'
+    ).first() or Circle(
+        name=f"{current_city.name}同城圈",
+        region_id=current_city.id,
+        circle_type='current'
+    )
+    circles_to_add.append(current_city_circle)
+    
+    # 现居地区县圈子
+    current_district_circle = Circle.query.filter_by(
+        region_id=current_district.id,
+        circle_type='current'
+    ).first() or Circle(
+        name=f"{current_district.name}同城圈",
+        region_id=current_district.id,
+        circle_type='current'
+    )
+    circles_to_add.append(current_district_circle)
+    
+    # 将用户添加到这些圈子中
+    for circle in circles_to_add:
+        if circle not in user.circles:
+            user.circles.append(circle)
+            db.session.add(circle)
 
 REPLIES_PER_PAGE = 3  # 每页显示的子评论数量
 
@@ -800,6 +888,58 @@ def update_topic_count_on_post_delete(mapper, connection, target):
     for topic in target.topics:
         if topic.post_count > 0:
             topic.post_count -= 1
+
+# 地区数据API路由
+@app.route('/api/regions/cities/<int:province_id>')
+@login_required
+def get_cities(province_id):
+    cities = Region.query.filter_by(parent_id=province_id, level='city').all()
+    return jsonify([{'id': city.id, 'name': city.name} for city in cities])
+
+@app.route('/api/regions/districts/<int:city_id>')
+@login_required
+def get_districts(city_id):
+    districts = Region.query.filter_by(parent_id=city_id, level='district').all()
+    return jsonify([{'id': district.id, 'name': district.name} for district in districts])
+
+@app.route('/circle/<int:circle_id>')
+@login_required
+def circle_detail(circle_id):
+    circle = Circle.query.get_or_404(circle_id)
+    
+    # 检查用户是否有权限访问该圈子
+    if circle not in current_user.circles:
+        flash('您不是该圈子的成员', 'danger')
+        return redirect(url_for('index'))
+    
+    # 获取分页参数
+    page = request.args.get('page', 1, type=int)
+    
+    # 获取圈子内的帖子
+    posts = Post.query.filter_by(visibility=f'circle_{circle_id}')\
+        .order_by(Post.created_at.desc())\
+        .paginate(page=page, per_page=10, error_out=False)
+    
+    return render_template('circle.html', circle=circle, posts=posts)
+
+@app.route('/my_circles')
+@login_required
+def my_circles():
+    # 获取用户所在的所有圈子
+    hometown_circles = [c for c in current_user.circles if c.circle_type == 'hometown']
+    current_circles = [c for c in current_user.circles if c.circle_type == 'current']
+    
+    return render_template('my_circles.html', 
+                         hometown_circles=hometown_circles,
+                         current_circles=current_circles)
+
+# 添加匿名用户类
+class AnonymousUser(AnonymousUserMixin):
+    def get_display_name(self):
+        return '游客'
+
+# 设置匿名用户类
+login_manager.anonymous_user = AnonymousUser
 
 if __name__ == '__main__':
     app.run(debug=True)
