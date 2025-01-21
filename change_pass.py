@@ -1,0 +1,1 @@
+python -c from app import db, User, generate_password_hash; user = User.query.filter_by(email='516717675@qq.com').first(); user.password = generate_password_hash('123456'); db.session.commit(); print('密码修改成功')

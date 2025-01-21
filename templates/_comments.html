@@ -1,0 +1,133 @@
+<form method="POST" action="{{ url_for('add_comment', post_id=post.id) }}" 
+      enctype="multipart/form-data" class="comment-form"
+      data-post-id="{{ post.id }}"
+      onsubmit="return submitComment(this, {{ post.id }})">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="d-flex gap-2">
+        <input type="text" class="form-control" name="content" placeholder="写下你的评论...">
+        <div class="position-relative" style="width: 40px;">
+            <input type="file" class="form-control form-control-sm position-absolute opacity-0" 
+                   name="image" accept="image/*" style="cursor: pointer;">
+            <i class="bi bi-image text-primary" style="font-size: 1.2rem; cursor: pointer;"></i>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">发送</button>
+    </div>
+</form>
+
+{% for comment in post.comments %}
+{% if not comment.parent_id %}
+<div class="comment-item" data-comment-id="{{ comment.id }}">
+    <div class="d-flex justify-content-between">
+        <div class="d-flex align-items-center">
+            <img src="{{ url_for('static', filename=comment.author.avatar) if comment.author.avatar else url_for('static', filename='images/default-avatar.png') }}" 
+                 class="rounded-circle me-2" style="width: 24px; height: 24px; object-fit: cover;" 
+                 alt="头像">
+            <a href="{{ url_for('user_profile', user_id=comment.author.id) }}" class="text-decoration-none">
+                <small class="text-primary">
+                    {{ comment.author.get_display_name() }}
+                    {% if comment.author.location %}
+                        <span class="location-tag">{{ comment.author.location }}</span>
+                    {% endif %}
+                </small>
+            </a>
+        </div>
+        <div class="d-flex align-items-center">
+            <small class="text-muted me-2">{{ comment.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+            <button class="btn btn-link btn-sm text-decoration-none p-0 me-2" 
+                    onclick="showReplyForm({{ comment.id }}, '{{ comment.author.get_display_name() }}', {{ comment.id }})"
+                    style="color: #666; font-size: 0.875em;">
+                回复
+            </button>
+            {% if comment.user_id == current_user.id %}
+            <button class="btn btn-link btn-sm text-decoration-none p-0" 
+                    onclick="deleteComment({{ comment.id }})"
+                    style="color: #666; font-size: 0.875em;">
+                删除
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    {% if comment.content %}
+    <p class="mb-1 mt-2" style="color: #333;">{{ comment.content }}</p>
+    {% endif %}
+
+    <!-- 回复表单 -->
+    <div id="reply-form-{{ comment.id }}" class="reply-form mt-2" style="display: none;">
+        <form method="POST" action="{{ url_for('add_comment', post_id=post.id, parent_id=comment.id) }}" 
+              enctype="multipart/form-data" class="d-flex gap-2"
+              data-post-id="{{ post.id }}"
+              data-comment-id="{{ comment.id }}"
+              onsubmit="return submitComment(this, {{ post.id }})">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="text" class="form-control form-control-sm" name="content" 
+                   placeholder="回复 {{ comment.author.get_display_name() }}...">
+            <button type="submit" class="btn btn-primary btn-sm">回复</button>
+        </form>
+    </div>
+
+    <!-- 回复列表 -->
+    {% if comment.replies %}
+    <div class="replies-section mt-2" style="margin-left: 20px;">
+        {% set initial_replies = comment.replies[:3] %}
+        {% for reply in initial_replies %}
+        <div class="reply-item mb-2 p-2" style="background-color: #f8f9fa; border-radius: 4px;"
+             data-comment-id="{{ reply.id }}" data-parent-id="{{ comment.id }}" 
+             data-user-id="{{ reply.author.id }}">
+            <div class="d-flex justify-content-between">
+                <div class="d-flex align-items-center">
+                    <img src="{{ url_for('static', filename=reply.author.avatar) if reply.author.avatar else url_for('static', filename='images/default-avatar.png') }}" 
+                         class="rounded-circle me-2" style="width: 20px; height: 20px; object-fit: cover;" 
+                         alt="头像">
+                    <a href="{{ url_for('user_profile', user_id=reply.author.id) }}" class="text-decoration-none">
+                        <small class="text-primary">
+                            {{ reply.author.get_display_name() }}
+                            {% if reply.author.location %}
+                                <span class="location-tag">{{ reply.author.location }}</span>
+                            {% endif %}
+                        </small>
+                    </a>
+                </div>
+                <div class="d-flex align-items-center">
+                    <small class="text-muted me-2">{{ reply.created_at.strftime('%Y-%m-%d %H:%M') }}</small>
+                    <button class="btn btn-link btn-sm text-decoration-none p-0 me-2" 
+                            onclick="showReplyForm({{ comment.id }}, '{{ reply.author.get_display_name() }}', {{ reply.id }})"
+                            style="color: #666; font-size: 0.75em;">
+                        回复
+                    </button>
+                    {% if reply.user_id == current_user.id %}
+                    <button class="btn btn-link btn-sm text-decoration-none p-0" 
+                            onclick="deleteComment({{ reply.id }})"
+                            style="color: #666; font-size: 0.75em;">
+                        删除
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+            <p class="mb-0 mt-1" style="color: #333; font-size: 0.9em;">
+                {% if reply.reply_to %}
+                    回复 <span class="text-primary">{{ reply.reply_to.get_display_name() }}</span>：
+                    {% if reply.content.startswith('@' + reply.reply_to.get_display_name()) %}
+                        {{ reply.content[(reply.reply_to.get_display_name()|length + 1):] }}
+                    {% else %}
+                        {{ reply.content }}
+                    {% endif %}
+                {% else %}
+                    {{ reply.content }}
+                {% endif %}
+            </p>
+        </div>
+        {% endfor %}
+        {% if comment.replies|length > 3 %}
+        <div class="text-center mt-2">
+            <button class="btn btn-link btn-sm load-more-replies" 
+                    onclick="loadMoreReplies({{ comment.id }}, 2)"
+                    style="color: #1890ff; font-size: 0.875em;">
+                查看更多回复
+            </button>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+{% endfor %} 

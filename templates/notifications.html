@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h4 class="mb-4">通知</h4>
+    
+    {% if notifications %}
+        <div class="list-group">
+            {% for notification in notifications %}
+            <a href="{{ notification.url }}" class="list-group-item list-group-item-action">
+                <div class="d-flex align-items-center">
+                    <img src="{{ notification.sender.avatar or 'https://via.placeholder.com/40' }}" 
+                         class="rounded-circle me-3" width="40" height="40">
+                    <div class="flex-grow-1">
+                        <p class="mb-1">{{ notification.content }}</p>
+                        <small class="text-muted">{{ notification.created_at|timesince }}</small>
+                    </div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="text-center text-muted mt-4">
+            <p>暂无通知</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

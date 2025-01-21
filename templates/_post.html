@@ -1,0 +1,78 @@
+<div class="card-body position-relative">
+    <!-- 发布者信息 -->
+    <div class="d-flex align-items-center mb-2">
+        <a href="{{ url_for('user_profile', user_id=user.id) }}" class="text-decoration-none d-flex align-items-center">
+            <img src="{{ url_for('static', filename=user.avatar) if user.avatar else url_for('static', filename='images/default-avatar.png') }}" 
+                 class="rounded-circle me-2" style="width: 32px; height: 32px; object-fit: cover;" 
+                 alt="头像">
+            <span class="text-primary">
+                {{ user.get_display_name() }}
+                {% if user.location %}
+                    <span class="location-tag">{{ user.location }}</span>
+                {% endif %}
+            </span>
+        </a>
+    </div>
+
+    <!-- 微博内容 -->
+    {% if post.content %}
+    <p class="card-text">{{ post.content }}</p>
+    {% endif %}
+
+    <!-- 图片内容 -->
+    {% if post.images %}
+    <div class="post-images">
+        {% for image in post.images %}
+        <img src="{{ url_for('static', filename=image.thumbnail) }}" 
+             class="post-image-thumbnail" 
+             data-original="{{ url_for('static', filename=image.original) }}" 
+             alt="Post image"
+             onclick="showImage(this.dataset.original)">
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- 发布时间 -->
+    <p class="post-time mt-2 mb-0">{{ post.created_at.strftime('%Y-%m-%d %H:%M') }}</p>
+    
+    <hr class="my-2">
+
+    <!-- 互动按钮 -->
+    <div class="d-flex justify-content-between align-items-center">
+        <div class="d-flex flex-column">
+            <div class="d-flex align-items-center">
+                <button class="btn btn-link text-decoration-none p-0 me-3" onclick="likePost({{ post.id }})">
+                    {% set has_liked = post.likes.filter_by(user_id=current_user.id).first() is not none %}
+                    <i class="bi bi-heart{% if has_liked %}-fill text-danger{% endif %}"></i>
+                    <span class="ms-1">{{ post.likes.count() }}</span>
+                </button>
+                <button class="btn btn-link text-decoration-none p-0 me-3" onclick="toggleComments({{ post.id }})">
+                    <i class="bi bi-chat"></i>
+                    <span class="ms-1">{{ post.comments.count() }}</span>
+                </button>
+            </div>
+            {% if post.likes.count() > 0 %}
+            <div class="likes-info mt-1" style="font-size: 0.85em; color: #666; margin-left: 8px;">
+                {% for like in post.likes %}
+                    {{ like.user.get_display_name() }}{% if not loop.last %}、{% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% if current_user.id == post.author_id %}
+        <button class="btn btn-link text-decoration-none p-0" onclick="deletePost({{ post.id }})" style="color: #666;">
+            <i class="bi bi-trash"></i>
+        </button>
+        {% endif %}
+    </div>
+
+    <!-- 评论区 -->
+    <div id="comments-{{ post.id }}" class="comments-section mt-3" 
+         style="display: {% if request.args.get('show_comments')|int == post.id %}block{% else %}none{% endif %};">
+        {% for comment in post.comments %}
+            {% if not comment.parent_id %}
+                {% include '_comments.html' %}
+            {% endif %}
+        {% endfor %}
+    </div>
+</div> 
