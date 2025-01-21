@@ -16,14 +16,7 @@
 
     <!-- 微博内容 -->
     {% if post.content %}
-    <p class="card-text">
-        {% set content = post.content %}
-        {% for topic in post.topics %}
-            {% set topic_text = '#' + topic.name %}
-            {% set content = content.replace(topic_text, '<a href="' + url_for('index', topic=topic.name) + '" class="text-primary text-decoration-none">' + topic_text + '</a>') %}
-        {% endfor %}
-        {{ content | safe }}
-    </p>
+    <p class="card-text">{{ post.content }}</p>
     {% endif %}
 
     <!-- 图片内容 -->

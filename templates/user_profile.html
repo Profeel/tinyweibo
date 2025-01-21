@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 
+<<<<<<< HEAD
 {% block extra_style %}
 <style>
     /* 用户主页布局样式 */
@@ -37,34 +38,34 @@
 </style>
 {% endblock %}
 
+=======
+>>>>>>> parent of 7886766 (1.5 可用版本)
 {% block content %}
 <div class="container py-4">
-    <div class="profile-container">
-        <!-- 用户信息卡片 -->
-        <div class="card profile-card">
-            <div class="card-body">
-                <div class="d-flex align-items-center">
-                    <img src="{{ url_for('static', filename=profile_user.avatar) if profile_user.avatar else url_for('static', filename='images/default-avatar.png') }}" 
-                         class="rounded-circle me-3" style="width: 64px; height: 64px; object-fit: cover;" 
-                         alt="头像">
-                    <div>
-                        <h4 class="mb-1">
-                            {{ profile_user.get_display_name() }}
-                            {% if profile_user.location %}
-                                <span class="location-tag">{{ profile_user.location }}</span>
-                            {% endif %}
-                        </h4>
-                    </div>
+    <!-- 用户信息卡片 -->
+    <div class="card mb-4 mx-auto" style="width: 40%;">
+        <div class="card-body">
+            <div class="d-flex align-items-center">
+                <img src="{{ url_for('static', filename=profile_user.avatar) if profile_user.avatar else url_for('static', filename='images/default-avatar.png') }}" 
+                     class="rounded-circle me-3" style="width: 64px; height: 64px; object-fit: cover;" 
+                     alt="头像">
+                <div>
+                    <h4 class="mb-1">
+                        {{ profile_user.get_display_name() }}
+                        {% if profile_user.location %}
+                            <span class="location-tag">{{ profile_user.location }}</span>
+                        {% endif %}
+                    </h4>
                 </div>
             </div>
         </div>
-
-        <!-- 用户的微博列表 -->
-        {% for post, user in posts %}
-        <div class="card post-card" data-post-id="{{ post.id }}" id="post-{{ post.id }}">
-            {% include '_post.html' %}
-        </div>
-        {% endfor %}
     </div>
+
+    <!-- 用户的微博列表 -->
+    {% for post, user in posts %}
+    <div class="card post-card mx-auto" style="width: 40%;" data-post-id="{{ post.id }}" id="post-{{ post.id }}">
+        {% include '_post.html' %}
+    </div>
+    {% endfor %}
 </div>
 {% endblock %} 
