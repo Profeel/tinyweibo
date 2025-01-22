@@ -457,7 +457,7 @@ def index():
                     if image and allowed_file(image.filename):
                         filename = secure_filename(image.filename)
                         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
-                        unique_filename = f"{timestamp}_{filename}"
+                        unique_filename = f"{timestamp}_{uuid.uuid4()}_{filename}"
                         
                         # 保存原图
                         original_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
@@ -470,7 +470,8 @@ def index():
                         # 记录图片信息
                         image_list.append({
                             'original': os.path.join('uploads', unique_filename),
-                            'thumbnail': os.path.join('thumbnails', unique_filename)
+                            'thumbnail': os.path.join('thumbnails', unique_filename),
+                            'filename': unique_filename
                         })
                 
                 post.images = image_list
