@@ -169,8 +169,27 @@ with app.app_context():
     db.create_all()
 
 def create_thumbnail(image_path, thumbnail_path, size):
-    """创建等比例缩略图，保持图片比例"""
+    """创建等比例缩略图，保持图片比例和正确的方向"""
     with Image.open(image_path) as img:
+        # 获取 EXIF 数据
+        try:
+            exif = img._getexif()
+            if exif is not None:
+                # EXIF 方向标签
+                orientation_key = 274  # 0x0112
+                if orientation_key in exif:
+                    orientation = exif[orientation_key]
+                    # 根据方向信息旋转图片
+                    if orientation == 3:
+                        img = img.rotate(180, expand=True)
+                    elif orientation == 6:
+                        img = img.rotate(270, expand=True)
+                    elif orientation == 8:
+                        img = img.rotate(90, expand=True)
+        except (AttributeError, KeyError, IndexError):
+            # 处理没有 EXIF 或读取失败的情况
+            pass
+
         # 计算缩放比例
         width, height = img.size
         ratio = min(size[0]/width, size[1]/height)
@@ -187,7 +206,7 @@ def create_thumbnail(image_path, thumbnail_path, size):
         y = (size[1] - new_size[1]) // 2
         thumb.paste(img, (x, y))
         
-        # 保存缩略图
+        # 保存缩略图，保持原图的 EXIF 数据
         thumb.save(thumbnail_path, quality=95, optimize=True)
 
 @login_manager.user_loader
