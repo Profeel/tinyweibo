@@ -40,13 +40,13 @@
         }
         #image-preview {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 4px;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 8px;
             margin-top: 12px;
             margin-bottom: 12px;
             width: 100%;
             background-color: #f8f9fa;
-            padding: 4px;
+            padding: 8px;
             border-radius: 4px;
         }
         
@@ -59,6 +59,18 @@
             overflow: hidden;
             border: 1px solid #e8e8e8;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            cursor: move;  /* 添加移动光标 */
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .preview-image-container.dragging {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            z-index: 1000;
+        }
+        
+        .preview-image-container.drag-over {
+            border: 2px dashed #007bff;
         }
         
         .preview-image-wrapper {
@@ -71,43 +83,37 @@
             align-items: center;
             justify-content: center;
             background: #fff;
-            padding: 2px;  /* 添加内边距 */
+            padding: 2px;
         }
         
         .preview-image {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            border-radius: 2px;
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
         }
         
         .remove-image {
             position: absolute;
-            top: 8px;
-            right: 8px;
-            background: rgba(0, 0, 0, 0.6);
+            top: 4px;
+            right: 4px;
+            background: rgba(255, 255, 255, 0.9);
             border-radius: 50%;
-            width: 24px;
-            height: 24px;
+            width: 20px;
+            height: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            color: #fff;
             font-size: 14px;
+            color: #dc3545;
             border: none;
             padding: 0;
             z-index: 1;
-            opacity: 0;
-            transition: opacity 0.2s ease;
-        }
-        
-        .preview-image-container:hover .remove-image {
-            opacity: 1;
         }
         
         .remove-image:hover {
-            background: rgba(0, 0, 0, 0.8);
+            background: #fff;
+            color: #bb2d3b;
         }
         #imageModal .modal-img {
             max-width: 100%;
@@ -162,13 +168,13 @@
         /* 图片预览区域样式 */
         #image-preview {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 4px;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 8px;
             margin-top: 12px;
             margin-bottom: 12px;
             width: 100%;
             background-color: #f8f9fa;
-            padding: 4px;
+            padding: 8px;
             border-radius: 4px;
         }
         
@@ -654,6 +660,7 @@
     <script>
         let currentImageIndex = 0;
         let currentPostImages = [];
+        let imageFiles = [];  // 存储图片文件的数组
 
         function showImage(imageSrc) {
             const modal = new bootstrap.Modal(document.getElementById('imageModal'));
@@ -929,55 +936,157 @@
         }
 
         function handleImagePreview(input) {
-            const previewContainer = document.getElementById('image-preview');
+            const preview = document.getElementById('image-preview');
             const uploadStatus = document.querySelector('.upload-status');
+            const files = Array.from(input.files);
             
-            // 清空预览区域
-            previewContainer.innerHTML = '';
-            
-            // 显示预览区域
-            previewContainer.style.display = 'grid';
-            uploadStatus.textContent = `已选择${input.files.length}张图片`;
-            
-            // 创建预览
-            Array.from(input.files).forEach((file, index) => {
+            // 处理新选择的文件
+            files.forEach(file => {
+                if (!file.type.startsWith('image/')) {
+                    alert('请只上传图片文件');
+                    return;
+                }
+                
                 const reader = new FileReader();
-                const container = document.createElement('div');
-                container.className = 'preview-image-container';
-                
-                const wrapper = document.createElement('div');
-                wrapper.className = 'preview-image-wrapper';
-                
-                const img = document.createElement('img');
-                img.className = 'preview-image';
-                
-                const removeBtn = document.createElement('button');
-                removeBtn.className = 'remove-image';
-                removeBtn.innerHTML = '<i class="bi bi-x"></i>';
-                removeBtn.onclick = (e) => {
-                    e.preventDefault();
-                    container.remove();
-                    // 更新状态文本
-                    const remainingImages = previewContainer.querySelectorAll('.preview-image-container').length;
-                    uploadStatus.textContent = remainingImages > 0 ? `已选择${remainingImages}张图片` : '';
-                    if (remainingImages === 0) {
-                        previewContainer.style.display = 'none';
-                        input.value = ''; // 清空文件输入
-                    }
-                };
-                
-                reader.onload = (e) => {
+                reader.onload = function(e) {
+                    // 创建预览容器
+                    const container = document.createElement('div');
+                    container.className = 'preview-image-container';
+                    container.draggable = true;
+                    container.dataset.index = imageFiles.length;
+                    
+                    // 添加拖拽事件监听器
+                    container.addEventListener('dragstart', handleDragStart);
+                    container.addEventListener('dragend', handleDragEnd);
+                    container.addEventListener('dragover', handleDragOver);
+                    container.addEventListener('drop', handleDrop);
+                    
+                    // 创建图片包装器
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'preview-image-wrapper';
+                    
+                    // 创建图片元素
+                    const img = document.createElement('img');
                     img.src = e.target.result;
+                    img.className = 'preview-image';
+                    
+                    // 创建删除按钮
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'remove-image';
+                    removeBtn.innerHTML = '×';
+                    removeBtn.onclick = function() {
+                        const index = parseInt(container.dataset.index);
+                        imageFiles.splice(index, 1);
+                        container.remove();
+                        updateImageIndexes();
+                        if (imageFiles.length === 0) {
+                            preview.style.display = 'none';
+                        }
+                        // 更新上传状态
+                        uploadStatus.textContent = imageFiles.length > 0 ? `已选择 ${imageFiles.length} 张图片` : '';
+                    };
+                    
+                    wrapper.appendChild(img);
+                    container.appendChild(wrapper);
+                    container.appendChild(removeBtn);
+                    preview.appendChild(container);
+                    
+                    imageFiles.push(file);
+                    preview.style.display = 'grid';
                 };
-                
-                wrapper.appendChild(img);
-                container.appendChild(wrapper);
-                container.appendChild(removeBtn);
-                previewContainer.appendChild(container);
                 
                 reader.readAsDataURL(file);
             });
+            
+            // 更新上传状态
+            uploadStatus.textContent = imageFiles.length > 0 ? `已选择 ${imageFiles.length} 张图片` : '';
+            input.value = '';  // 清空input，允许重复选择相同的文件
         }
+        
+        function handleDragStart(e) {
+            this.classList.add('dragging');
+            e.dataTransfer.setData('text/plain', this.dataset.index);
+        }
+        
+        function handleDragEnd(e) {
+            this.classList.remove('dragging');
+            document.querySelectorAll('.preview-image-container').forEach(container => {
+                container.classList.remove('drag-over');
+            });
+        }
+        
+        function handleDragOver(e) {
+            e.preventDefault();
+            this.classList.add('drag-over');
+        }
+        
+        function handleDrop(e) {
+            e.preventDefault();
+            this.classList.remove('drag-over');
+            
+            const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+            const toIndex = parseInt(this.dataset.index);
+            
+            if (fromIndex === toIndex) return;
+            
+            // 重新排序图片文件数组
+            const temp = imageFiles[fromIndex];
+            imageFiles.splice(fromIndex, 1);
+            imageFiles.splice(toIndex, 0, temp);
+            
+            // 更新 DOM
+            const preview = document.getElementById('image-preview');
+            const containers = Array.from(preview.children);
+            
+            if (fromIndex < toIndex) {
+                this.parentNode.insertBefore(containers[fromIndex], containers[toIndex].nextSibling);
+            } else {
+                this.parentNode.insertBefore(containers[fromIndex], containers[toIndex]);
+            }
+            
+            updateImageIndexes();
+        }
+        
+        function updateImageIndexes() {
+            document.querySelectorAll('.preview-image-container').forEach((container, index) => {
+                container.dataset.index = index;
+            });
+        }
+        
+        // 修改表单提交处理
+        document.querySelector('form').onsubmit = function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            
+            // 移除原有的图片文件
+            formData.delete('image');
+            
+            // 按顺序添加图片文件
+            imageFiles.forEach((file, index) => {
+                formData.append('image', file);
+            });
+            
+            fetch(this.action, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('发布失败');
+                }
+                window.location.reload();
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert(error.message || '发布失败，请稍后重试');
+            });
+            
+            return false;
+        };
 
         document.addEventListener('keydown', function(event) {
             if (document.getElementById('imageModal').classList.contains('show')) {
