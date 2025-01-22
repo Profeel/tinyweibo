@@ -486,7 +486,7 @@ def index():
             return redirect(url_for('index'))
     
     # 获取热门话题
-    hot_topics = Topic.query.order_by(Topic.post_count.desc()).limit(10).all()
+    hot_topics = Topic.query.filter(Topic.post_count > 0).order_by(Topic.post_count.desc()).limit(10).all()
     
     # 构建基础查询
     query = db.session.query(Post, User).join(User, Post.author_id == User.id)

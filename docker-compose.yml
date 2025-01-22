@@ -1,14 +1,21 @@
-version: '3'
+version: '3.8'
 
 services:
   web:
     build: .
     ports:
-      - "6000:5000"
+      - "5000:5000"
     volumes:
-      - ./instance:/app/instance
       - ./static:/app/static
+      - ./instance:/app/instance
     environment:
       - FLASK_APP=app.py
       - FLASK_ENV=production
-    restart: always
+      - MAIL_SERVER=${MAIL_SERVER}
+      - MAIL_PORT=${MAIL_PORT}
+      - MAIL_USE_TLS=${MAIL_USE_TLS}
+      - MAIL_USERNAME=${MAIL_USERNAME}
+      - MAIL_PASSWORD=${MAIL_PASSWORD}
+      - SECRET_KEY=${SECRET_KEY}
+      - SECURITY_PASSWORD_SALT=${SECURITY_PASSWORD_SALT}
+    restart: unless-stopped
