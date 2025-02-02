@@ -1,3 +1,9 @@
+# 示例基础镜像
+FROM python:3.11-slim
+
+# 后续的构建指令
+RUN apt-get update && apt-get install -y some-package
+
 FROM python:3.11-slim
 
 # 设置工作目录
